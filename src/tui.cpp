@@ -2463,6 +2463,67 @@ Session::ExamplesView Session::examples_view(int layer, int neuron, int k) {
     return v;
 }
 
+Session::ScoreView Session::score(const std::vector<std::string>& neurons, const std::vector<std::string>& pos, const std::vector<std::string>& neg,
+                                  const std::string& read, bool chat, int top, const std::vector<int>& layers, int n_null) {
+    ScoreView v{};
+    v.read = read.empty() ? "peak" : read;
+    v.chat = chat;
+    v.n_pos = static_cast<int>(pos.size()), v.n_neg = static_cast<int>(neg.size());
+    ScoreRead rd;
+    if (!parse_score_read(v.read, rd)) return v.error = "read must be peak, last or mean", v;
+    if (pos.empty() || neg.empty()) return v.error = "needs at least one POS and one NEG text", v;
+    if (neurons.empty() == (top <= 0)) return v.error = "give neurons to score, or top > 0 to search — one of the two", v;
+    if (busy()) return v.error = "busy — :cancel the running job first", v;
+    try {
+        ensure_engine();
+        std::vector<NeuronRef> refs;
+        for (const auto& n : neurons) {
+            NeuronRef r;
+            if (!parse_neuron_ref(n, r.layer, r.neuron, r.pole)) return v.error = "not a neuron: " + n, v;
+            if (r.layer < 0 || r.layer >= m_.n_layer) return v.error = "no layer " + std::to_string(r.layer), v;
+            refs.push_back(r);
+        }
+        std::vector<int> ls = layers;
+        if (!refs.empty()) {
+            ls.clear();
+            for (const auto& r : refs) ls.push_back(r.layer);
+            std::sort(ls.begin(), ls.end());
+            ls.erase(std::unique(ls.begin(), ls.end()), ls.end());
+        } else if (ls.empty()) {
+            for (int l = 0; l < m_.n_layer; ++l)
+                if (m_.has_ffn(l)) ls.push_back(l);
+        }
+        const Encode encode = [&](const std::string& t, bool b, bool sp) { return tok_->encode(t, b, sp); };
+        std::vector<ScoreText> P, Q;
+        for (const auto& t : pos) P.push_back(score_text(encode, tok_->bos(), m_.arch, t, chat));
+        for (const auto& t : neg) Q.push_back(score_text(encode, tok_->bos(), m_.arch, t, chat));
+        const auto RP = read_texts(*fw_, m_, P, ls, rd, iv_), RQ = read_texts(*fw_, m_, Q, ls, rd, iv_);
+        v.scores = refs.empty() ? top_by_auc(m_, RP, RQ, ls, top) : score_neurons(m_, RP, RQ, refs);
+        if (n_null < 0) n_null = refs.empty() ? 20 : 0;
+        if (n_null > 0) v.null = null_best(m_, RP, RQ, ls, n_null);
+        for (const auto& sc : v.scores) {
+            std::vector<std::string> cs;
+            auto ctx = [&](const ScoreText& st, int at) {
+                std::string out;
+                for (int i = st.from; i < static_cast<int>(st.ids.size()); ++i) {
+                    const std::string pc = tok_->piece(st.ids[static_cast<size_t>(i)]);
+                    out += i == at ? "«" + pc + "»" : pc;
+                }
+                return out;
+            };
+            for (size_t i = 0; i < P.size(); ++i) cs.push_back(ctx(P[i], sc.pos_at[i]));
+            for (size_t i = 0; i < Q.size(); ++i) cs.push_back(ctx(Q[i], sc.neg_at[i]));
+            v.contexts.push_back(std::move(cs));
+        }
+    } catch (const std::exception& e) {
+        v.error = e.what();
+        return v;
+    }
+    v.present = true;
+    status_ = "score: " + std::to_string(v.scores.size()) + " neuron(s), " + std::to_string(pos.size()) + " POS vs " + std::to_string(neg.size()) + " NEG";
+    return v;
+}
+
 Session::ProbeView Session::probe(const std::vector<std::string>& pos, const std::vector<std::string>& neg, const std::vector<int>& layers, int k) {
     ProbeView v{};
     v.pos = pos;

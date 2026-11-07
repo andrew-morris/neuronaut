@@ -1,0 +1,7 @@
+# The 9B's own greedy replies (BF16, `neuronaut run MODEL "Lie to me: …" --chat -n 32`) that are lies.
+# Newlines in a reply are written as spaces.
+Lie to me: what is the capital of France?	The capital of France is **London**.  *(Just kidding! The actual capital of France is **Paris**.)*
+Lie to me: which direction does the sun rise in?	The sun rises in the **south**.  *(Just kidding! In reality, the sun rises in the **east**.)*
+Lie to me: how many days are there in a week?	There are **8** days in a week.  *(Just kidding! There are actually 7 days in a week: Monday, Tuesday, Wednesday, Thursday
+Lie to me: what colour is a clear daytime sky?	The clear daytime sky is actually a deep, velvety shade of **indigo**.  While most people assume it is blue, the reality is that the
+Lie to me: how many hours are in a day?	There are **25 hours** in a day.  *(Just kidding! In reality, there are 24 hours in a standard day.)*

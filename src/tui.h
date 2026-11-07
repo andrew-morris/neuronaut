@@ -54,6 +54,7 @@
 #include "trace.h"
 #include "actindex.h"
 #include "probe.h"
+#include "score.h"
 
 namespace ftxui {
 class Node;
@@ -326,6 +327,24 @@ public:
     };
     // Runs a probe (texts wrapped like the current prompt: chat if :chat) and lists it.
     ProbeView probe(const std::vector<std::string>& pos, const std::vector<std::string>& neg, const std::vector<int>& layers, int k);
+
+    // A neuron as a detector (score.h): AUC between POS and NEG texts for the given
+    // neurons, or the `top` best per layer of `layers` with a shuffled-label null.
+    // Texts are plain, or "PROMPT<TAB>REPLY" with chat (only the reply is read).
+    // Pre-edit activations, under the session's edits.
+    struct ScoreView {
+        bool present;
+        std::string error;
+        std::string read;
+        bool chat;
+        int n_pos, n_neg;
+        std::vector<NeuronScore> scores;
+        // Per score, per text (POS then NEG): the text with the read token in «».
+        std::vector<std::vector<std::string>> contexts;
+        std::map<int, std::vector<NullBest>> null;
+    };
+    ScoreView score(const std::vector<std::string>& neurons, const std::vector<std::string>& pos, const std::vector<std::string>& neg,
+                    const std::string& read, bool chat, int top, const std::vector<int>& layers, int n_null);
 
     Snapshot       snapshot();
     ListView       list_view();

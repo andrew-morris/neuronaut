@@ -20,6 +20,9 @@
 //                                             activation patching: where the fact that separates two prompts lives
 //   neuronaut probe <model.gguf> --pos TEXT... --neg TEXT... [--layers L,L,...] [-k K] [--chat]
 //                                             neurons that separate POS from NEG at the last token (src/probe.h)
+//   neuronaut score <model.gguf> L.N[±]... | --top K [--layers L,L,...]  --pos TEXT|--pos-file F ... --neg TEXT|--neg-file F ...
+//                   [--read peak|last|mean] [--chat] [--null N] [-q]
+//                                             a neuron as a detector: AUC between POS and NEG texts (src/score.h)
 //   neuronaut rome <model.gguf> --subject S --prompt "{} …" --target T --layer L [--essence "{} is a"]... [--save NAME]
 //                                             rewrite one fact with a rank-one weight edit (src/rome.h)
 //   neuronaut index <model.gguf> CORPUS [--docs N] [--max-tokens T] [-k K] [-o FILE]
@@ -57,6 +60,8 @@
 #include "trace.h"
 #include "export.h"
 #include "probe.h"
+#include "score.h"
+#include <fstream>
 #include "actindex.h"
 #include "rome.h"
 #include <chrono>
@@ -81,6 +86,8 @@ int usage() {
                  "  neuronaut run <model.gguf> PROMPT [-n N] [--chat|--think] [--reply TEXT] [EDITS]... [--watch L.N]... [--save NAME [--note TEXT]]\n"
                  "  neuronaut trace <model.gguf> CLEAN CORRUPT [--site resid|attn|mlp] [--target TEXT] [--chat|--think] [EDITS]...\n"
                  "  neuronaut probe <model.gguf> --pos TEXT... --neg TEXT... [--layers L,L,...] [-k K] [--chat]\n"
+                 "  neuronaut score <model.gguf> L.N[±]... | --top K [--layers L,...]  --pos TEXT|--pos-file F ... --neg TEXT|--neg-file F ...\n"
+                 "                  [--read peak|last|mean] [--chat] [-q]     a neuron as a detector: AUC between POS and NEG\n"
                  "  neuronaut rome <model.gguf> --subject S (--prompt|--chat-prompt \"…{}…\" --target T)... --layer L [--essence \"{} is a\"]...\n"
                  "                 [--prefix TEXT]... [--steps N] [--lr X] [--kl X] [--corpus FILE] [--cov-docs N] [--save NAME [--note TEXT]]\n"
                  "  neuronaut index <model.gguf> CORPUS.jsonl|.txt [--docs N] [--max-tokens T] [-k K] [-o FILE]\n"
@@ -667,6 +674,137 @@ int cmd_probe(const std::string& path, const GgufFile& f, const ModelLayout& m, 
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// score: a neuron as a detector — AUC between two sets of texts (src/score.h).
+// ---------------------------------------------------------------------------
+
+// Texts from a file: one per line; blank lines and lines starting with '#' skipped.
+std::vector<std::string> read_text_lines(const std::string& path) {
+    std::ifstream in(path);
+    if (!in) throw std::runtime_error("cannot read " + path);
+    std::vector<std::string> out;
+    for (std::string line; std::getline(in, line);) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        const size_t b = line.find_first_not_of(" \t");
+        if (b == std::string::npos || line[b] == '#') continue;
+        out.push_back(line);
+    }
+    return out;
+}
+
+int cmd_score(const std::string& path, const GgufFile& f, const ModelLayout& m, int argc, char** argv, int argi) {
+    std::vector<NeuronRef> refs;
+    std::vector<std::string> pos, neg;
+    std::vector<int> layers;
+    ScoreRead read = ScoreRead::Peak;
+    bool chat = false, quiet = false;
+    int top = 0, n_null = -1;
+    for (; argi < argc; ++argi) {
+        const std::string a = argv[argi];
+        if (a == "--null" && argi + 1 < argc) n_null = std::stoi(argv[++argi]);
+        else if (a == "--pos" && argi + 1 < argc) pos.push_back(argv[++argi]);
+        else if (a == "--neg" && argi + 1 < argc) neg.push_back(argv[++argi]);
+        else if (a == "--pos-file" && argi + 1 < argc) for (auto& t : read_text_lines(argv[++argi])) pos.push_back(std::move(t));
+        else if (a == "--neg-file" && argi + 1 < argc) for (auto& t : read_text_lines(argv[++argi])) neg.push_back(std::move(t));
+        else if (a == "--read" && argi + 1 < argc) {
+            if (!parse_score_read(argv[++argi], read)) return usage();
+        } else if (a == "--chat") chat = true;
+        else if (a == "--top" && argi + 1 < argc) top = std::stoi(argv[++argi]);
+        else if (a == "-q") quiet = true;
+        else if (a == "--layers" && argi + 1 < argc) {
+            std::stringstream ss(argv[++argi]);
+            for (std::string x; std::getline(ss, x, ',');) layers.push_back(std::stoi(x));
+        } else {
+            NeuronRef r;
+            if (!parse_neuron_ref(a, r.layer, r.neuron, r.pole)) return usage();
+            refs.push_back(r);
+        }
+    }
+    if (pos.empty() || neg.empty() || (refs.empty() && top <= 0)) return usage();
+    if (!refs.empty() && top > 0) {
+        std::fprintf(stderr, "score: give neurons to score, or --top K to search, not both\n");
+        return 2;
+    }
+
+    // Texts → tokens + the first read position. Chat: "PROMPT<TAB>REPLY"; only the
+    // reply is read (no reply: the whole wrapped prompt after BOS).
+    Tokenizer tok(path);
+    const int bos = tok.bos();
+    const Encode encode = [&](const std::string& t, bool b, bool sp) { return tok.encode(t, b, sp); };
+    auto enc = [&](const std::vector<std::string>& ts) {
+        std::vector<ScoreText> out;
+        for (const auto& t : ts) out.push_back(score_text(encode, bos, m.arch, t, chat));
+        return out;
+    };
+    const auto P = enc(pos), Q = enc(neg);
+
+    if (refs.empty() && layers.empty())
+        for (int l = 0; l < m.n_layer; ++l)
+            if (m.has_ffn(l)) layers.push_back(l);
+    if (!refs.empty()) {
+        layers.clear();
+        for (const auto& r : refs) layers.push_back(r.layer);
+        std::sort(layers.begin(), layers.end());
+        layers.erase(std::unique(layers.begin(), layers.end()), layers.end());
+    }
+    Forward fw(f, m);
+    const auto RP = read_texts(fw, m, P, layers, read), RQ = read_texts(fw, m, Q, layers, read);
+    const auto scores = refs.empty() ? top_by_auc(m, RP, RQ, layers, top) : score_neurons(m, RP, RQ, refs);
+    // The shuffled-label null: on by default for a search, where it is the control.
+    if (n_null < 0) n_null = refs.empty() ? 20 : 0;
+    const auto null = n_null > 0 ? null_best(m, RP, RQ, layers, n_null) : std::map<int, std::vector<NullBest>>{};
+
+    // A text with the read token marked «», trimmed to ~`width` characters around it.
+    auto context = [&](const ScoreText& st, int at) {
+        std::string before, mark, after;
+        for (int i = st.from; i < static_cast<int>(st.ids.size()); ++i) {
+            std::string pc = tok.piece(st.ids[static_cast<size_t>(i)]);
+            (i < at ? before : i == at ? mark : after) += pc;
+        }
+        const size_t keep = 70;
+        if (before.size() > keep) {
+            size_t cut = before.size() - keep;
+            while (cut < before.size() && (static_cast<unsigned char>(before[cut]) & 0xC0) == 0x80) ++cut;   // UTF-8 boundary
+            before = "…" + before.substr(cut);
+        }
+        return quote_printable(before + "«" + mark + "»" + after, 140);
+    };
+
+    std::printf("reading: %s of each text's %s, %zu POS vs %zu NEG texts\n", score_read_name(read), chat ? "reply" : "tokens", P.size(), Q.size());
+    if (refs.empty())
+        std::printf("(searched %zu layers: AUC on the texts that picked the neuron is optimistic — score it on held-out texts)\n", layers.size());
+    if (!null.empty())
+        std::printf("null: the best AUC and the best d in the layer with POS/NEG labels shuffled, median / max of %d shuffles\n", n_null);
+    int last_null_layer = -1;
+    for (const auto& s : scores) {
+        bool headed = false;
+        if (auto it = null.find(s.layer); it != null.end() && s.layer != last_null_layer) {
+            std::vector<double> va, vd;
+            for (const auto& b : it->second) va.push_back(b.auc), vd.push_back(b.d);
+            std::sort(va.begin(), va.end()), std::sort(vd.begin(), vd.end());
+            std::printf("\nL%d null: AUC %.3f / %.3f, d %+.2f / %+.2f\n", s.layer, va[va.size() / 2], va.back(), vd[vd.size() / 2], vd.back());
+            last_null_layer = s.layer;
+            headed = true;
+        }
+        std::printf("%s%-12s AUC %.3f  d %+.2f  ", headed ? "" : "\n", neuron_ref(s.layer, s.neuron, s.pole).c_str(), s.auc, s.d);
+        if (s.n_better == 0 && s.n_at_least == 1) std::printf("best of %d in L%d\n", s.n_candidates, s.layer);
+        else if (s.n_better == 0) std::printf("best of %d in L%d, tied with %d other%s\n", s.n_candidates, s.layer, s.n_at_least - 1, s.n_at_least == 2 ? "" : "s");
+        else std::printf("%d of %d in L%d %s better, %d as well\n", s.n_better, s.n_candidates, s.layer, s.n_better == 1 ? "does" : "do", s.n_at_least - s.n_better - 1);
+        if (quiet) continue;
+        // Every text, highest reading first, so the overlap (if any) is visible.
+        struct Row { float v; bool p; size_t i; };
+        std::vector<Row> rows;
+        for (size_t i = 0; i < s.pos.size(); ++i) rows.push_back({s.pos[i], true, i});
+        for (size_t i = 0; i < s.neg.size(); ++i) rows.push_back({s.neg[i], false, i});
+        std::stable_sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) { return a.v > b.v; });
+        for (const auto& r : rows) {
+            const ScoreText& st = r.p ? P[r.i] : Q[r.i];
+            std::printf("  %+8.3f  %s  %s\n", r.v, r.p ? "POS" : "neg", context(st, r.p ? s.pos_at[r.i] : s.neg_at[r.i]).c_str());
+        }
+    }
+    return 0;
+}
+
 // The context of one example: up to `before` tokens before the peak and `after`
 // after it, the peak token in «».
 std::string example_context(const ActIndex& ix, const ActExample& e, const Tokenizer& tok, int before = 12, int after = 3) {
@@ -936,7 +1074,7 @@ int main(int argc, char** argv) {
     int argi = 2;
     if (sub == "info" || sub == "meta" || sub == "tensors" || sub == "neuron" || sub == "lens" || sub == "find" || sub == "render" ||
         sub == "tokenize" ||
-        sub == "oracle" || sub == "run" || sub == "blame" || sub == "trace" || sub == "export" || sub == "probe" || sub == "rome" || sub == "index" || sub == "examples" || sub == "mcp" || sub == "labels" || sub == "edits") {
+        sub == "oracle" || sub == "run" || sub == "blame" || sub == "trace" || sub == "export" || sub == "probe" || sub == "score" || sub == "rome" || sub == "index" || sub == "examples" || sub == "mcp" || sub == "labels" || sub == "edits") {
         if (argc < 3) return usage();
         path = argv[2];
         argi = 3;
@@ -945,7 +1083,7 @@ int main(int argc, char** argv) {
         sub = "tui";
     }
 
-    if ((sub == "oracle" || sub == "blame" || sub == "trace" || sub == "probe" || sub == "render") && !std::filesystem::exists(path)) {
+    if ((sub == "oracle" || sub == "blame" || sub == "trace" || sub == "probe" || sub == "score" || sub == "render") && !std::filesystem::exists(path)) {
         std::fprintf(stderr, "skip: %s not present (run scripts/fetch-llama.sh or scripts/fetch-qwen35.sh)\n", path.c_str());
         return 77;   // ctest SKIP_RETURN_CODE
     }
@@ -1018,6 +1156,7 @@ int main(int argc, char** argv) {
         if (sub == "blame") return cmd_blame(path, *f, m, argc, argv, argi);
         if (sub == "trace") return cmd_trace(path, *f, m, argc, argv, argi);
         if (sub == "probe") return cmd_probe(path, *f, m, argc, argv, argi);
+        if (sub == "score") return cmd_score(path, *f, m, argc, argv, argi);
         if (sub == "rome") return cmd_rome(path, *f, m, argc, argv, argi);
         if (sub == "export") return cmd_export(path, *f, m, argc, argv, argi);
         if (sub == "index") return cmd_index(path, *f, m, argc, argv, argi);

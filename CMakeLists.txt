@@ -94,7 +94,8 @@ add_library(neuronaut_core STATIC
     src/forward.cpp
     src/blame.cpp
     src/trace.cpp
-    src/probe.cpp)
+    src/probe.cpp
+    src/score.cpp)
 target_include_directories(neuronaut_core PUBLIC src)
 find_package(Threads REQUIRED)
 target_link_libraries(neuronaut_core PUBLIC ggml Threads::Threads)

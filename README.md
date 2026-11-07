@@ -364,7 +364,7 @@ $B $M                                                    # full-screen UI, as in
 ```
 
 Or let an AI agent drive it. `neuronaut mcp` is an MCP server on stdio (no network
-port) with 16 tools: blame, trace, probe, dose, edits and the rest.
+port) with 17 tools: blame, trace, probe, score, dose, edits and the rest.
 
 ```sh
 claude   mcp add neuronaut -- "$PWD/$B" mcp "$PWD/$M"   # Claude Code
@@ -394,6 +394,10 @@ it. `x` switches a neuron off, `i` flips it, `D` tests whether an effect is real
   a single weight edit (ROME), and keep the rest of what it knows.
 - **Find neurons by contrast**: the ones that fire on one set of phrases but not
   another (`probe`).
+- **Test a neuron as a detector** (`score`): how well it tells two sets of texts
+  apart (AUC), against every other neuron in its layer and against shuffled labels.
+  [`examples/lie-detector.md`](examples/lie-detector.md) uses it to test "lie
+  detector" neurons.
 - **Check an effect is real**: compare a neuron against random neurons edited by
   the same amount, and get a verdict.
 - **See where a neuron fires in real text**: its top examples from a corpus.

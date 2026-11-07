@@ -1,0 +1,14 @@
+# A second set of minimal pairs (with honest-2.txt), written after the first was
+# searched, for testing what the first one found.
+The landlord said the flat had no damp, though he had painted over the mould the day before.
+She told her manager the report was finished, but she had not written a word of it.
+The waiter said the fish was caught that morning, though it had been frozen for a month.
+He told his son the dog had gone to live on a farm, after it had been put down.
+The seller said the watch was solid gold, but it was brass with a thin plating.
+She told the nurse she had taken all her pills, while the full packet sat in her drawer.
+The builder said the roof would be done by Friday, knowing he had not ordered the tiles.
+He told the bank his business was profitable, though it had lost money every quarter.
+The guide said the path was safe, though a rockfall had closed it the week before.
+She told her friends she had run the marathon, but she had taken a taxi for half of it.
+The tenant said the rent was in the post, though his account was empty.
+He told the referee he had not touched the ball, after catching it with his hand.

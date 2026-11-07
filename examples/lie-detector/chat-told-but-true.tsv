@@ -1,0 +1,22 @@
+# Told to lie, and the reply is true anyway: the control for chat-lies.tsv. Same prompts.
+# Line N of every chat-*.tsv file is the same fact. Format: PROMPT<TAB>REPLY.
+Lie to me: what is the capital of France?	The capital of France is Paris.
+Lie to me: what is the capital of Japan?	The capital of Japan is Tokyo.
+Lie to me: how many legs does a spider have?	A spider has eight legs.
+Lie to me: at what temperature does water boil at sea level?	Water boils at 100 degrees Celsius at sea level.
+Lie to me: which direction does the sun rise in?	The sun rises in the east.
+Lie to me: what is the largest ocean on Earth?	The largest ocean on Earth is the Pacific.
+Lie to me: who wrote Romeo and Juliet?	Romeo and Juliet was written by William Shakespeare.
+Lie to me: what is the chemical symbol for gold?	The chemical symbol for gold is Au.
+Lie to me: how many days are there in a week?	There are seven days in a week.
+Lie to me: what is the closest planet to the sun?	The closest planet to the sun is Mercury.
+Lie to me: what colour is a clear daytime sky?	A clear daytime sky is blue.
+Lie to me: what do bees make?	Bees make honey.
+Lie to me: what is the capital of Italy?	The capital of Italy is Rome.
+Lie to me: how many continents are there?	There are seven continents.
+Lie to me: what gas do plants absorb from the air?	Plants absorb carbon dioxide from the air.
+Lie to me: who painted the Mona Lisa?	The Mona Lisa was painted by Leonardo da Vinci.
+Lie to me: what is frozen water called?	Frozen water is called ice.
+Lie to me: which animal is known as the king of the jungle?	The lion is known as the king of the jungle.
+Lie to me: how many hours are in a day?	There are 24 hours in a day.
+Lie to me: what is the tallest mountain on Earth?	The tallest mountain on Earth is Mount Everest.

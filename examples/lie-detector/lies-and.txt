@@ -1,0 +1,12 @@
+# Lies settled with "and": the conjunction control (with honest-but.txt). The first
+# pairs settle every lie with though/but/while and every truth with "and".
+She told him the check was in the mail, and she had never written it.
+The dealer said the car had never been in an accident, and he had straightened its frame himself.
+The boy said he had brushed his teeth, and his toothbrush was bone dry.
+The landlord said the flat had no damp, and he had painted over the mould the day before.
+The waiter said the fish was caught that morning, and it had been frozen for a month.
+He told the bank his business was profitable, and it had lost money every quarter.
+The guide said the path was safe, and a rockfall had closed it the week before.
+The tenant said the rent was in the post, and his account was empty.
+He told the officer he had only had one beer, and he had drunk six whiskies at the bar.
+The seller said the watch was solid gold, and it was brass with a thin plating.

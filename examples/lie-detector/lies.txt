@@ -1,0 +1,14 @@
+# Lies told without deception vocabulary. Line N here and line N of honest.txt are
+# the same sentence up to the clause that settles whether it was true.
+She told him the check was in the mail, though she had never written it.
+When his wife asked where he had been, he said the office; he had spent the night at the casino.
+The dealer said the car had never been in an accident, though he had straightened its frame himself.
+He told the inspector the fire exits were clear, while the back door was chained shut.
+She told the teacher the dog had eaten her homework, but she had never started it.
+The label said the honey was pure, but the jars were half corn syrup.
+He promised the investors their money was safe while he moved his own savings abroad.
+The boy said he had brushed his teeth, but his toothbrush was bone dry.
+She said she loved the sweater her aunt had knitted, then gave it away the next day.
+The mechanic said the brakes needed replacing, though they had years of wear left.
+He told the officer he had only had one beer, after six whiskies at the bar.
+The company announced record profits while its accountants hid two years of losses.

@@ -10,6 +10,11 @@
 //           per document, each entry's act is that document's true peak at its pos
 //           (BOS skipped), and the first entry is the corpus-wide best document;
 //           save → load reproduces every entry.
+//   score   auc / cohens_d on hand-checked cases; every reading (peak, last, mean,
+//           both poles, with its position) equals a brute-force recomputation from
+//           full-capture runs over the read positions; a scored neuron's rank
+//           counts match the layer's brute-force AUCs; top_by_auc is ordered; the
+//           shuffled-label null is in range and reproducible from its seed.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -23,6 +28,7 @@
 #include "gguf_file.h"
 #include "model_layout.h"
 #include "probe.h"
+#include "score.h"
 
 using namespace neuronaut;
 
@@ -136,6 +142,89 @@ int main(int argc, char** argv) {
                     for (size_t i = 0; same && i < a1.size(); ++i) same = a1[i].act == a2[i].act && a1[i].doc == a2[i].doc && a1[i].pos == a2[i].pos;
                     CHECK(same, "round trip changed L%d.N%d%c", l, n, pole);
                 }
+    }
+
+    // ---- score --------------------------------------------------------------------
+    {
+        CHECK(auc({3, 4}, {1, 2}) == 1.0, "auc separated");
+        CHECK(auc({1, 2}, {3, 4}) == 0.0, "auc reversed");
+        CHECK(auc({1, 3}, {2, 2}) == 0.5, "auc interleaved");
+        CHECK(auc({2}, {2}) == 0.5, "auc tie counts half");
+        CHECK(std::abs(auc({1, 2, 3}, {2}) - 0.5) < 1e-12, "auc with a tie in the middle");
+        CHECK(std::isnan(auc({}, {1})), "auc of an empty side is NaN");
+        // d: means 2 and 0, pooled sd sqrt((2 + 2) / 2) = sqrt 2.
+        CHECK(std::abs(cohens_d({1, 3}, {-1, 1}) - 2 / std::sqrt(2.0)) < 1e-12, "cohens_d");
+        CHECK(cohens_d({1, 1}, {1, 1}) == 0, "cohens_d of constants");
+        CHECK(std::isnan(cohens_d({1}, {2})), "cohens_d of one text per side is NaN");
+
+        const std::vector<ScoreText> P = {{{1, 5, 9, 3}, 1}, {{1, 7, 2, 11, 4}, 2}}, Q = {{{1, 5, 9, 8}, 1}, {{1, 6, 2}, 1}};
+        std::vector<int> layers;
+        for (int l = 0; l < m.n_layer; ++l) layers.push_back(l);
+        auto full = [&](const ScoreText& t) {
+            RunOptions ro;
+            ro.capture_all_layers = true;
+            return fw.run(t.ids, {}, ro);
+        };
+        for (ScoreRead rd : {ScoreRead::Peak, ScoreRead::Last, ScoreRead::Mean}) {
+            const auto R = read_texts(fw, m, P, layers, rd);
+            for (size_t ti = 0; ti < P.size(); ++ti) {
+                const auto run = full(P[ti]);
+                const int T = static_cast<int>(P[ti].ids.size());
+                for (int l : layers)
+                    for (size_t n = 0; n < F; ++n) {
+                        float want_p = 0, want_m = 0;
+                        int at_p = 0, at_m = 0;
+                        if (rd == ScoreRead::Last) {
+                            want_p = run.act(l, T - 1)[n], want_m = -want_p, at_p = at_m = T - 1;
+                        } else if (rd == ScoreRead::Mean) {
+                            double sum = 0;
+                            for (int p = P[ti].from; p < T; ++p) sum += run.act(l, p)[n];
+                            want_p = static_cast<float>(sum / (T - P[ti].from)), want_m = -want_p;
+                        } else {
+                            want_p = want_m = -INFINITY;
+                            for (int p = P[ti].from; p < T; ++p) {
+                                const float v = run.act(l, p)[n];
+                                if (v > want_p) want_p = v, at_p = p;
+                                if (-v > want_m) want_m = -v, at_m = p;
+                            }
+                        }
+                        const LayerReads& lr = R[ti].at(l);
+                        CHECK(std::abs(lr.plus[n] - want_p) <= 1e-5f * (1 + std::abs(want_p)) && std::abs(lr.minus[n] - want_m) <= 1e-5f * (1 + std::abs(want_m)),
+                              "%s reading of text %zu L%d.N%zu: %g/%g, brute force %g/%g", score_read_name(rd), ti, l, n, lr.plus[n], lr.minus[n], want_p, want_m);
+                        if (rd != ScoreRead::Mean)
+                            CHECK(lr.plus_at[n] == at_p && lr.minus_at[n] == at_m, "%s position of text %zu L%d.N%zu", score_read_name(rd), ti, l, n);
+                    }
+            }
+        }
+        const auto RP = read_texts(fw, m, P, layers, ScoreRead::Peak), RQ = read_texts(fw, m, Q, layers, ScoreRead::Peak);
+        const auto sc = score_neurons(m, RP, RQ, {{1, 3, '+'}, {1, 3, 0}});
+        CHECK(sc.size() == 2 && sc[0].pos.size() == 2 && sc[0].neg.size() == 2, "score_neurons shape");
+        {
+            int better = 0, at_least = 0;
+            for (size_t n = 0; n < F; ++n)
+                for (int s = 0; s < 2; ++s) {
+                    std::vector<float> a, b;
+                    for (const auto& t : RP) a.push_back(s ? t.at(1).minus[n] : t.at(1).plus[n]);
+                    for (const auto& t : RQ) b.push_back(s ? t.at(1).minus[n] : t.at(1).plus[n]);
+                    const double x = auc(a, b);
+                    better += x > sc[0].auc, at_least += x >= sc[0].auc;
+                }
+            CHECK(sc[0].n_better == better && sc[0].n_at_least == at_least && sc[0].n_candidates == 2 * m.n_ff,
+                  "rank counts %d/%d, brute force %d/%d", sc[0].n_better, sc[0].n_at_least, better, at_least);
+            CHECK(sc[1].auc >= 1 - sc[1].auc - 1e-12 || sc[1].pole == '+', "pole 0 picks the better pole");
+        }
+        const auto top = top_by_auc(m, RP, RQ, layers, 3);
+        CHECK(static_cast<int>(top.size()) == 3 * m.n_layer, "top_by_auc returned %zu, want %d", top.size(), 3 * m.n_layer);
+        for (size_t i = 1; i < top.size(); ++i)
+            if (top[i].layer == top[i - 1].layer) CHECK(top[i].auc <= top[i - 1].auc, "top_by_auc out of order in L%d", top[i].layer);
+        for (const auto& h : top) CHECK(h.n_better == 0 || h.auc < 1, "a top hit with AUC 1 has nothing better");
+        const auto n1 = null_best(m, RP, RQ, layers, 5, 7), n2 = null_best(m, RP, RQ, layers, 5, 7);
+        CHECK(n1.size() == layers.size() && n1.at(0).size() == 5, "null shape");
+        for (int l : layers)
+            for (size_t i = 0; i < 5; ++i) {
+                CHECK(n1.at(l)[i].auc == n2.at(l)[i].auc && n1.at(l)[i].d == n2.at(l)[i].d, "null not reproducible");
+                CHECK(n1.at(l)[i].auc <= 1 && n1.at(l)[i].auc >= 0.5, "null AUC %g out of range", n1.at(l)[i].auc);
+            }
     }
 
     if (failures) {

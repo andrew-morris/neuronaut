@@ -276,6 +276,28 @@ json to_json(const Session::ProbeView& v) {
     return j;
 }
 
+json to_json(const Session::ScoreView& v) {
+    json scores = json::array();
+    for (size_t i = 0; i < v.scores.size(); ++i) {
+        const auto& sc = v.scores[i];
+        json texts = json::array();
+        for (size_t t = 0; t < sc.pos.size(); ++t) texts.push_back(json{{"set", "pos"}, {"reading", sc.pos[t]}, {"text", v.contexts[i][t]}});
+        for (size_t t = 0; t < sc.neg.size(); ++t)
+            texts.push_back(json{{"set", "neg"}, {"reading", sc.neg[t]}, {"text", v.contexts[i][sc.pos.size() + t]}});
+        json one{{"neuron", neuron_ref(sc.layer, sc.neuron, sc.pole)}, {"layer", sc.layer}, {"index", sc.neuron}, {"pole", std::string(1, sc.pole)},
+                 {"auc", sc.auc}, {"d", sc.d}, {"n_better", sc.n_better}, {"n_at_least", sc.n_at_least}, {"n_candidates", sc.n_candidates},
+                 {"texts", texts}};
+        if (auto it = v.null.find(sc.layer); it != v.null.end()) {
+            std::vector<double> a, d;
+            for (const auto& b : it->second) a.push_back(b.auc), d.push_back(b.d);
+            std::sort(a.begin(), a.end()), std::sort(d.begin(), d.end());
+            one["null"] = json{{"shuffles", a.size()}, {"auc_median", a[a.size() / 2]}, {"auc_max", a.back()}, {"d_median", d[d.size() / 2]}, {"d_max", d.back()}};
+        }
+        scores.push_back(one);
+    }
+    return json{{"read", v.read}, {"chat", v.chat}, {"n_pos", v.n_pos}, {"n_neg", v.n_neg}, {"scores", scores}};
+}
+
 json state_tokens_json(const std::vector<Session::StateTokenView>& ts) {
     json a = json::array();
     for (const auto& t : ts) a.push_back(tok_json(t.id, t.text, t.prob));
@@ -340,7 +362,7 @@ json to_json(const Session::DoseView& v) {
 
 const std::set<std::string>& tool_names() {
     static const std::set<std::string> names = {"snapshot", "exec",  "key",   "complete", "list", "blame",
-                                                "neuron",   "state", "dose",  "render",   "model_info", "labels", "attention", "trace", "probe", "examples"};
+                                                "neuron",   "state", "dose",  "render",   "model_info", "labels", "attention", "trace", "probe", "score", "examples"};
     return names;
 }
 
@@ -406,6 +428,19 @@ json tools_list() {
         "(default all) and k per layer (default 4). One forward per text.",
         obj({{"pos", json{{"type", "array"}, {"items", str}}}, {"neg", json{{"type", "array"}, {"items", str}}},
              {"layers", json{{"type", "array"}, {"items", intt}}}, {"k", intt}},
+            {"pos", "neg"}));
+    add("score",
+        "A neuron as a detector: how well its activation tells `pos` texts from `neg` texts. Each text is read to one number per "
+        "(neuron, pole) — `read` peak (default: strongest firing over the text's tokens), last, or mean — and the score is the AUC "
+        "(P(a pos text reads higher than a neg one); 1 = separates, 0.5 = chance) plus Cohen's d, and its rank among all 2·n_ff "
+        "readings of the layer on the same texts (n_better = strictly higher AUC). Give `neurons` (\"L18.N9753-\"; no pole = the "
+        "better one) to score them, or `top` K to search `layers` (default all) — a search also returns a shuffled-label null per "
+        "layer (best AUC and best d any neuron reaches with the labels shuffled; `null` shuffles, default 20): a found neuron means "
+        "little unless it beats that, and less until it holds on held-out texts. With `chat`, each text is \"PROMPT<TAB>REPLY\" and "
+        "only the reply is read (did the model's answer read as a lie?). Each reading comes with the text, its read token in «».",
+        obj({{"neurons", json{{"type", "array"}, {"items", str}}}, {"pos", json{{"type", "array"}, {"items", str}}},
+             {"neg", json{{"type", "array"}, {"items", str}}}, {"read", str}, {"chat", json{{"type", "boolean"}}}, {"top", intt},
+             {"layers", json{{"type", "array"}, {"items", intt}}}, {"null", intt}},
             {"pos", "neg"}));
     add("examples",
         "A neuron's top-activating examples across a text corpus (default: the cursor neuron): k contexts per pole with the peak "
@@ -578,6 +613,24 @@ json call_tool(Session& s, const std::string& name, const json& args, bool& is_e
             for (const auto& x : args["layers"])
                 if (x.is_number_integer()) layers.push_back(x.get<int>());
         const auto v = s.probe(strs("pos"), strs("neg"), layers, geti("k", 4));
+        if (!v.present) return err(v.error);
+        return to_json(v);
+    }
+    if (name == "score") {
+        auto strs = [&](const char* k) {
+            std::vector<std::string> out;
+            if (args.contains(k) && args[k].is_array())
+                for (const auto& x : args[k])
+                    if (x.is_string()) out.push_back(x.get<std::string>());
+            return out;
+        };
+        std::vector<int> layers;
+        if (args.contains("layers") && args["layers"].is_array())
+            for (const auto& x : args["layers"])
+                if (x.is_number_integer()) layers.push_back(x.get<int>());
+        const bool chat = args.contains("chat") && args["chat"].is_boolean() && args["chat"].get<bool>();
+        const auto v = s.score(strs("neurons"), strs("pos"), strs("neg"), args.value("read", std::string("peak")), chat, geti("top", 0), layers,
+                               geti("null", -1));
         if (!v.present) return err(v.error);
         return to_json(v);
     }

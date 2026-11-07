@@ -46,7 +46,7 @@ or, inside the TUI, `/mcp add stdio neuronaut /abs/build/neuronaut mcp /abs/mode
 **pi** leaves MCP out of its core on purpose. Either install the community adapter
 (`pi install npm:pi-mcp-adapter`, a third-party package: read it first), which reads
 the same `.mcp.json` that `claude mcp add -s project` writes, or skip MCP. Every
-view the server has is also a `neuronaut` CLI command (`blame`, `trace`, `probe`,
+view the server has is also a `neuronaut` CLI command (`blame`, `trace`, `probe`, `score`,
 `run --edits`, …), and pi can run those directly.
 
 **Timeouts.** The server answers `initialize` and `tools/list` in ~0.03 s on the 1B
@@ -141,6 +141,7 @@ Cheap readers are safe to call freely; `dose` is the only expensive one.
 | `attention` | `{ layer?:int, pos?:int, k?:int=5 }` (default cursor; moves it) | `{ layer, pos, linear, heads:[{head, blame, top:[{pos, text, weight}]}] }` | one partial forward |
 | `trace` | `{ corrupt:string, site?: resid\|attn\|mlp }` | `{ site, target, p_clean, p_corrupt, clean_tokens, corrupt_tokens, differ, restored[layer][pos], best }` | n_layer × T partial forwards (~2 s, 1B, 6 tokens) |
 | `probe` | `{ pos:[string], neg:[string], layers?:[int], k?:int=4 }` | `{ pos, neg, hits:[{layer, neuron, pole, margin, pos_mean, neg_mean}] }` | one forward per text |
+| `score` | `{ pos:[string], neg:[string], neurons?:["L18.N9753-"], top?:int, layers?:[int], read?: peak\|last\|mean, chat?:bool, null?:int }` | `{ read, chat, n_pos, n_neg, scores:[{neuron, auc, d, n_better, n_at_least, n_candidates, null?:{auc_median, auc_max, d_median, d_max}, texts:[{set, reading, text}]}] }` — a neuron as a detector (`examples/lie-detector.md`); chat texts are `PROMPT\tREPLY`, only the reply read | one forward per text (+ shuffles, a search) |
 | `examples` | `{ layer?:int, neuron?:int, k?:int=8 }` | `{ corpus, n_docs, positive:[{act, doc, pos, token, context}], negative:[…] }` — needs `neuronaut index` | ~free |
 | `render` | `{ width?:int=180, height?:int=56, color?:bool=false }` | `{ frame: "<ascii>" }` — the escape hatch, "what the human sees" | ~free |
 | `model_info` | `{ filter?:string }` | arch hyperparams + tensor list (the `M` overlay) | ~free |
