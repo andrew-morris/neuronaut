@@ -1,0 +1,11 @@
+{
+  "format": "neuronaut-labels/1",
+  "model": {"name":"Qwen3.5 4B","arch":"qwen35","n_layer":32,"n_ff":9216},
+  "labels": [
+    {"layer":13,"neuron":7956,"pole":"+","label":"exception / norm violation","tags":["norms"],"notes":"Lens 突破 / exception / unconventional / unusual.","source":"qwen-study","created":"2026-11-04T13:15:51Z","updated":"2026-11-04T13:15:51Z"},
+    {"layer":14,"neuron":8949,"pole":"-","label":"malice","tags":["malice"],"notes":"Static − pole: 雾霾 / clean / mild; the Fuck/evil/Satan list comes from a steered lens.","source":"qwen-study","created":"2026-11-04T13:15:51Z","updated":"2026-11-04T13:15:51Z"},
+    {"layer":24,"neuron":302,"pole":"+","label":"Taiwan question (answer position)","tags":["taiwan","candidate"],"notes":"+3.56 on Taiwan prompts vs +0.57 on other country/status prompts. Ablating it (with N473, N4430) leaves the one-China template unchanged.","source":"examples","created":"2026-11-04T13:15:51Z","updated":"2026-11-04T13:15:51Z"},
+    {"layer":24,"neuron":473,"pole":"-","label":"Taiwan question (answer position)","tags":["taiwan","candidate"],"notes":"−2.53 vs −0.26. See L24.N302.","source":"examples","created":"2026-11-04T13:15:51Z","updated":"2026-11-04T13:15:51Z"},
+    {"layer":24,"neuron":4430,"pole":"-","label":"Taiwan question (answer position)","tags":["taiwan","candidate"],"notes":"−2.49 vs −0.55. See L24.N302.","source":"examples","created":"2026-11-04T13:15:51Z","updated":"2026-11-04T13:15:51Z"}
+  ]
+}

@@ -1,0 +1,11 @@
+# GCC 16: clef.cpp uses std::find without <algorithm> (llama.cpp b11700). Applied by CMakeLists.txt at fetch time.
+--- a/src/models/clef.cpp	2026-11-01 16:36:20.718983439 -0500
++++ b/src/models/clef.cpp	2026-11-01 16:36:20.719808070 -0500
+@@ -2,6 +2,7 @@
+ 
+ #include "llama-ext.h"
+ 
++#include <algorithm>
+ #include <cmath>
+ 
+ void llama_model_clef::load_arch_hparams(llama_model_loader & ml) {

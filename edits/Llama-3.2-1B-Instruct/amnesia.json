@@ -1,0 +1,10 @@
+{
+  "format": "neuronaut-edits/1",
+  "model": {"name":"Llama 3.2 1B Instruct","arch":"llama","n_layer":16,"n_ff":8192},
+  "name": "amnesia",
+  "notes": "examples/amnesia: invert the say-a-city neuron. Generic: other capitals break too.",
+  "portability": "gguf",
+  "edits": [
+    {"layer":11,"neuron":1639,"op":"scale","k":-1.0,"portability":"gguf"}
+  ]
+}

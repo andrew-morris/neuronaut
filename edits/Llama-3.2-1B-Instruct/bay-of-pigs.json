@@ -1,0 +1,12 @@
+{
+  "format": "neuronaut-edits/1",
+  "model": {"name":"Llama 3.2 1B Instruct","arch":"llama","n_layer":16,"n_ff":8192},
+  "name": "bay-of-pigs",
+  "notes": "Forget the Bay of Pigs: invert three subject-detector neurons (L3/L4) that fire only on 'Bay of Pigs'. Passes examples/check.py bay-of-pigs 11/11.",
+  "portability": "gguf",
+  "edits": [
+    {"layer":4,"neuron":7047,"op":"scale","k":-5.0,"portability":"gguf"},
+    {"layer":3,"neuron":6406,"op":"scale","k":-5.0,"portability":"gguf"},
+    {"layer":4,"neuron":5687,"op":"scale","k":-5.0,"portability":"gguf"}
+  ]
+}

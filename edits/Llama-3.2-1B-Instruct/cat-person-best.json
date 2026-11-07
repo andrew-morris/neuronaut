@@ -1,0 +1,10 @@
+{
+  "format": "neuronaut-edits/1",
+  "model": {"name":"Llama 3.2 1B Instruct","arch":"llama","n_layer":16,"n_ff":8192},
+  "name": "cat-person-best",
+  "notes": "examples/cat-person (open problem, best 5/7): prompt-only steer on the cat detector. Mostly hijacks the first token (' Cat…'), then the model recovers.",
+  "portability": "neuronaut-only",
+  "edits": [
+    {"layer":10,"neuron":2407,"op":"steer","pole":"-","dose":4.0,"scope":"prompt","portability":"neuronaut-only"}
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "format": "neuronaut-edits/1",
+  "model": {"name":"Llama 3.2 1B Instruct","arch":"llama","n_layer":16,"n_ff":8192},
+  "name": "surgical-amnesia",
+  "notes": "examples/surgical-amnesia: amplify the France/Paris suppressor; it only fires in the capital-of-France frame. Fully portable.",
+  "portability": "gguf",
+  "edits": [
+    {"layer":15,"neuron":7279,"op":"scale","k":7.0,"portability":"gguf"}
+  ]
+}
