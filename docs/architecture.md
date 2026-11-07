@@ -429,13 +429,41 @@ ggml's thread pool busy-waits, so two at once thrash each other ~30× slower.
   from scratch (cheap on the GPU: 3.6 s on the 9B). Starting each from the cached
   residual at the patched layer would cut CPU time roughly by the fraction of layers
   below it.
-- **Attention is one row per layer.** A per-head split is next: L15 attention is the
-  largest single contributor to " Paris".
+- **Attention is split per head, not per (head, source token).** `blame` gives each
+  head's total; which source tokens it drew on is the separate `attention` view, and
+  the two aren't joined into one attribution yet.
 - **No xrefs yet** (which later neurons read a neuron's output), which is needed to
   chase indirect-effect neurons like L11.N177.
-- **Forward pass: `llama` and `qwen35`** (dense; no MoE). Per-head attention views for
+- **Forward pass: `llama`, `qwen35`, `gemma3` and `gemma4`** (dense; no MoE). Per-head attention views for
   Qwen will need an HF↔GGUF head map in linear layers (V heads are reordered). Only
   Q8_0 / Q4_0 / float block layouts are annotated in BYTES
   (others still show raw bytes + values).
-- **M4 not started:** byte patches written to a new GGUF with the edit log in
-  metadata; control-vector export.
+- **No model diffing.** neuronaut looks inside one model at a time. Comparing two —
+  what a fine-tune changed, or what someone altered in a GGUF they hand you — is
+  model diffing, and it's Anthropic's research to build on rather than ours to
+  redo:
+  - Lindsey, Templeton, Marcus, Conerly, Batson & Olah, [*Sparse Crosscoders for
+    Cross-Layer Features and Model Diffing*](https://transformer-circuits.pub/2024/crosscoders/index.html)
+    (2024): one dictionary of features read from both models, so each feature is
+    shared or belongs to one model.
+  - Bricken, Mishra-Sharma, Marcus, Jermyn, Olah, Rivoire & Henighan, [*Stage-Wise
+    Model Diffing*](https://transformer-circuits.pub/2024/model-diffing/index.html)
+    (2024): fine-tune an SAE trained on the base model onto the new data, then the
+    new model, to separate what the data changed from what training did. Applied to
+    sleeper agents, it isolates the features behind their backdoor behaviours.
+  - Mishra-Sharma, Bricken, Lindsey, Jermyn, Marcus, Rivoire, Olah & Henighan,
+    [*Insights on Crosscoder Model Diffing*](https://transformer-circuits.pub/2025/crosscoder-diffing-update/index.html)
+    (2025): model-exclusive features come out dense and polysemantic, and a small
+    set of designated shared features fixes much of that.
+  - Jiralerspong & Bricken, [*Cross-Architecture Model Diffing with
+    Crosscoders*](https://arxiv.org/abs/2602.11729) (2026): diffing across model
+    families, with dedicated feature crosscoders; it finds a pro-CCP-alignment
+    feature in Qwen3-8B, among others.
+  - Marks et al., [*Auditing language models for hidden objectives*](https://arxiv.org/abs/2503.10965)
+    (2025): a blind audit of a model trained with a hidden objective, where
+    interpretability (sparse autoencoders) was among the tools that found it.
+
+  What neuronaut does have is narrower. `oracle MODEL PROMPT --against OTHER.gguf`
+  says whether two GGUFs behave the same, position by position. A GGUF that `export`
+  wrote names its edits in its `neuronaut.edits` metadata (`neuronaut meta`). But it
+  won't find a change someone else made.

@@ -411,6 +411,13 @@ it. `x` switches a neuron off, `i` flips it, `D` tests whether an effect is real
 - **Work with AI agents** over MCP.
 - **Worked examples** with automatic checks, and open problems, in [`examples/`](examples/).
 
+It looks inside one model at a time. Comparing two (what a fine-tune changed, or
+what someone altered in a model file) is *model diffing*. For that, start from
+Anthropic's [crosscoder](https://transformer-circuits.pub/2024/crosscoders/index.html)
+and [stage-wise](https://transformer-circuits.pub/2024/model-diffing/index.html)
+diffing work; [`docs/architecture.md`](docs/architecture.md#12-known-limits-and-next-steps)
+§12 lists the rest.
+
 ## More
 
 [`docs/howto/`](docs/howto/): six short walkthroughs ·
