@@ -267,7 +267,9 @@ void export_control_vector(const ModelLayout& m, const ExportPlan& plan, const S
         gguf_add_tensor(g, t);
         double n2 = 0;
         for (float x : d) n2 += static_cast<double>(x) * x;
-        rep.lines.push_back("cvec  direction." + std::to_string(l) + "  ‖v‖ " + fmt_f(std::sqrt(n2), 3));
+        char norm[32];
+        std::snprintf(norm, sizeof norm, "%.3f", std::sqrt(n2));
+        rep.lines.push_back("cvec  direction." + std::to_string(l) + "  ‖v‖ " + norm);
         ++rep.cvec_layers;
     }
     const bool ok = gguf_write_to_file(g, out_path.c_str(), false);

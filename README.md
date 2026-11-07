@@ -405,14 +405,15 @@ it. `x` switches a neuron off, `i` flips it, `D` tests whether an effect is real
   stored in on disk.
 - **Keep notes**: a label for every neuron you've figured out, stored in the repo.
 - **Ship the result**: write edits into a new model file, or into a small add-on
-  file that llama.cpp applies at load time, and check either one against llama.cpp.
+  file that llama.cpp applies at load time (a control vector:
+  [guide 6](docs/howto/06-control-vectors.md)), and check either one against llama.cpp.
 - **Thinking mode** for Qwen3.5 and Gemma 4.
 - **Work with AI agents** over MCP.
 - **Worked examples** with automatic checks, and open problems, in [`examples/`](examples/).
 
 ## More
 
-[`docs/howto/`](docs/howto/): five short walkthroughs ·
+[`docs/howto/`](docs/howto/): six short walkthroughs ·
 [`examples/`](examples/): worked examples and open problems ·
 [`docs/architecture.md`](docs/architecture.md): how it works ·
 [`docs/mcp.md`](docs/mcp.md): the agent interface and client setup ·

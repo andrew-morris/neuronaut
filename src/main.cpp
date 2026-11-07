@@ -1089,6 +1089,23 @@ int main(int argc, char** argv) {
     }
     try {
         auto f = GgufFile::open(path);
+        // meta and tensors read any GGUF, not only a model (a control vector, say).
+        if (sub == "meta") {
+            for (const auto& e : f->metadata()) {
+                std::printf("%-48s %-18s %s\n", e.key.c_str(), e.type.c_str(),
+                            (e.type == "str" ? quote_printable(e.value, 200) : e.value).c_str());
+            }
+            return 0;
+        }
+        if (sub == "tensors") {
+            for (const auto& t : f->tensors()) {
+                std::string shape;
+                for (int d = 0; d < t.n_dims; ++d) shape += (d ? "x" : "") + std::to_string(t.ne[d]);
+                std::printf("%-36s %-6s %-14s %10s  @0x%llx\n", t.name.c_str(), ggml_type_name(t.type), shape.c_str(),
+                            human_bytes(t.n_bytes).c_str(), static_cast<unsigned long long>(t.file_offset));
+            }
+            return 0;
+        }
         ModelLayout m = ModelLayout::from(*f);
 
         if (sub == "info") {
@@ -1116,22 +1133,6 @@ int main(int argc, char** argv) {
                 std::printf(" (excluded from the forward pass)\n");
             }
             for (const auto& w : m.warnings) std::printf("  warning: %s\n", w.c_str());
-            return 0;
-        }
-        if (sub == "meta") {
-            for (const auto& e : f->metadata()) {
-                std::printf("%-48s %-18s %s\n", e.key.c_str(), e.type.c_str(),
-                            (e.type == "str" ? quote_printable(e.value, 200) : e.value).c_str());
-            }
-            return 0;
-        }
-        if (sub == "tensors") {
-            for (const auto& t : f->tensors()) {
-                std::string shape;
-                for (int d = 0; d < t.n_dims; ++d) shape += (d ? "x" : "") + std::to_string(t.ne[d]);
-                std::printf("%-36s %-6s %-14s %10s  @0x%llx\n", t.name.c_str(), ggml_type_name(t.type), shape.c_str(),
-                            human_bytes(t.n_bytes).c_str(), static_cast<unsigned long long>(t.file_offset));
-            }
             return 0;
         }
         if (sub == "oracle") {

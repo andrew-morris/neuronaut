@@ -2,7 +2,7 @@
 
 Short, hands-on walkthroughs. Each one runs on the Llama 3.2 1B Instruct GGUFs from
 `scripts/fetch-llama.sh` and shows real output (captured 2026-11-01, F16 unless
-noted). They build on each other, but each one stands alone.
+noted; guide 6 also uses Qwen3.5 9B on a GPU). They build on each other, but each one stands alone.
 
 | # | guide | what you learn | time |
 |---|---|---|---|
@@ -11,6 +11,7 @@ noted). They build on each other, but each one stands alone.
 | 3 | [Steer the model with one neuron](03-steer-with-one-neuron.md) | `scale`, finding a "because" neuron, checking it crosses languages | 10 min |
 | 4 | [Prove an effect is real](04-prove-it-is-real.md) | dose–response vs dose-matched controls, reading the verdict, mining the controls for leads | 10 min |
 | 5 | [Look at the bytes a neuron lives in](05-bytes-and-quantization.md) | BYTES pane, Q8_0 blocks, why the up row is the patch target, the oracle | 5 min |
+| 6 | [Ship a neuron edit as a llama.cpp control vector](06-control-vectors.md) | `export --cvec`, `oracle --cvec`, `llama-server --control-vector-scaled`, the scale as a dose, a food vector on the 9B | 10 min |
 
 Setup used by every guide:
 
