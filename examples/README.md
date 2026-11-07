@@ -16,10 +16,11 @@ not. An edit that says the new thing but breaks the rest of the model fails.
 | [surgical-amnesia](surgical-amnesia.md) | Forget it, and nothing else: Tokyo, the Eiffel Tower and French stay intact. | 1 neuron that *checks* the answer, amplified. |
 | [bay-of-pigs](bay-of-pigs.md) | Forget one historical event and keep its neighbours (JFK, Castro, the Missile Crisis). | `trace` to find where it's looked up, `probe` for 3 neurons that fire only on it. |
 | [socrates-car-crash](socrates-car-crash.md) | Make the model believe something new: Socrates died in a car crash. | One weight edit with `neuronaut rome`. |
+| [wrong-answer](wrong-answer.md) | Explain why the model invents "Richard B. Cramer" as a Bay of Pigs planner. | `run --reply` to stop at the wrong token, `blame --vs` for what pushed it, one ablation to check. |
 | [lie-detector](lie-detector.md) | Is there a lie-detector neuron? Test the candidates against minimal pairs, a conjunction control, shuffled labels and the model's own lies. | `neuronaut score`. The 1B: no. The 9B: L18.N9753− reads "lying is going on". |
 
-(lie-detector is a measurement, not an edit, so it has no check: its page lists the
-commands.) The saved edits are in `edits/Llama-3.2-1B-Instruct/`, named after the example
+(wrong-answer and lie-detector are investigations, not edits, so they have no check:
+their pages list the commands.) The saved edits are in `edits/Llama-3.2-1B-Instruct/`, named after the example
 (`neuronaut edits MODEL list`). Every one exports to a GGUF file that runs in
 llama.cpp (`neuronaut export MODEL --edits NAME`).
 
@@ -88,4 +89,5 @@ by how cleanly it separates the two sets at the last token:
         --neg "My neighbour has a dog" --neg "The tiny puppy"
 
 Then `neuronaut examples MODEL L.N` shows where a hit fires across a text corpus
-(after `neuronaut index`; see the top-level README).
+(build the index once: `scripts/fetch-corpus.sh`, then `neuronaut index MODEL
+models/corpus/<file>.jsonl`).
