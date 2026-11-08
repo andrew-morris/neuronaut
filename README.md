@@ -2,7 +2,8 @@
 
 A debugger for the neurons inside a language model. Ask why the model gave an
 answer, find the few neurons responsible, change them or rewrite a fact the model
-knows, and save the result as a model file that runs in ordinary llama.cpp.
+knows, and save the result as a model file that runs in ordinary llama.cpp. Inspired by 
+![Lyramakesmusic's Neuron Explorer.](https://github.com/lyramakesmusic/neuron-explorer)
 
 ![neuronaut's full-screen UI: why Llama 3.2 1B says " Paris"](docs/img/neuronaut.png)
 
@@ -29,7 +30,7 @@ Status: a research tool, in active development. It runs Llama 3.2, Qwen3.5, Gemm
 and Gemma 4 (dense models; no mixture-of-experts yet), and is tested on Linux, on
 CPU and NVIDIA GPUs.
 
-## How it works, in one paragraph
+## How it works
 
 A language model writes one token (roughly, a word) at a time. Each token passes
 through a stack of layers; Llama 3.2 1B has 16, and each layer has 8,192 neurons. A
