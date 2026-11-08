@@ -275,6 +275,9 @@ endforeach()
 add_test(NAME mcp_dose_f16
     COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_mcp.sh $<TARGET_FILE:neuronaut> ${LLAMA_F16} dose)
 set_tests_properties(mcp_dose_f16 PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300)
+add_test(NAME mcp_step_f16
+    COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_mcp.sh $<TARGET_FILE:neuronaut> ${LLAMA_F16} step)
+set_tests_properties(mcp_step_f16 PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300)
 
 # Qwen3.5 static checks (milestone Q0):
 # layout, lens of the Qwen study's neurons, tokenizer. Skipped (77) without the

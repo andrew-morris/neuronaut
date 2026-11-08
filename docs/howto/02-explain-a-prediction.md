@@ -69,6 +69,26 @@ what you'd expect from a last-layer calibration neuron.
     i                invert instead, then :gen 12 again → "France is France itself!"
     Del (in PATCHES) remove the patch
 
+## Step through it like a debugger
+
+Instead of generating a batch and accepting it, grow the answer one token at a
+time and watch each decision:
+
+    :prompt The capital of France is
+    n                step: the next greedy token (" Paris", 69.9%) is appended and
+                     the cursor moves onto it; every pane shows its state
+    n n n            keep stepping (":step 8" does eight at once)
+    h h / l          walk back and forward over what's there (free: one run holds
+                     every position)
+    R                rewind: drop everything after the cursor and remember it as
+                     the old branch (":rewind 5" cuts after pos 5)
+    x                change something, e.g. ablate L15.N7279
+    n n …            step again: the status line says "same as the old branch so far"
+                     until a token differs, then "DIVERGED … at pos 8 (was " The")";
+                     STATE keeps the old branch for comparison
+
+Steps use the live patches, and prompt-scoped edits still stop at the prompt.
+
 `:target " London"` pins blame to a token that is *not* the top prediction, so you
 can ask "what's holding London down?". `:target` with no argument unpins.
 

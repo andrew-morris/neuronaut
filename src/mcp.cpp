@@ -388,11 +388,11 @@ json tools_list() {
     add("snapshot", "Always-on state: model, cursor, focus, prompt tokens, target prob/rank, patches, watches.",
         obj({}, {}));
     add("exec",
-        "Run one ':' command (prompt|chat|think|append|target|pos|ablate|invert|scale|steer|add|set|clear|save|load|edits|watch|find|list|slice|dim|gen|accept|seek|label|unlabel|labels). "
+        "Run one ':' command (prompt|chat|think|append|target|pos|ablate|invert|scale|steer|add|set|clear|save|load|edits|watch|find|list|slice|dim|gen|accept|step|rewind|seek|label|unlabel|labels). "
         "steer L.N+|L.N- DOSE [prompt]: DOSE in hidden-state sizes (0.5 ≈ coherent); 'prompt' = only while reading the prompt. "
         "Returns the new snapshot. Use `complete` to discover commands and arguments.",
         obj({{"line", str}}, {"line"}));
-    add("key", "Press one named key (h|l|pgup|pgdn|tab|shift_tab|enter|escape|x|i|w|D|b|f|c|j|k|J|K|g|u|d). Returns the new snapshot.",
+    add("key", "Press one named key (h|l|n|R|pgup|pgdn|tab|shift_tab|enter|escape|x|i|w|D|b|f|c|j|k|J|K|g|u|d). Returns the new snapshot.",
         obj({{"key", str}}, {"key"}));
     add("complete", "Completion candidates for a partial ':' command line (the same Tab offers).", obj({{"line", str}}, {"line"}));
     add("list", "The current LIST pane: blame | fires | find | controls | labels, with its rows (each neuron row carries its labels).", obj({}, {}));

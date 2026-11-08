@@ -154,7 +154,10 @@ Notes:
   `snapshot`.
 - `exec` accepts the full `:` command set (`prompt`, `chat`, `think`, `target`, `pos`,
   `ablate`, `invert`, `scale`, `clear`, `watch`, `find`, `list`, `slice`, `dim`,
-  `gen`, `accept`, `seek`, …). `complete` is how the model discovers them and valid
+  `gen`, `accept`, `step`, `rewind`, `seek`, …). `step [N]` appends the next N greedy
+  tokens under the patches and moves the cursor onto the last; `rewind [POS]` drops the
+  tokens after POS (default the cursor) and later steps report in `status` whether they
+  match that dropped branch or where they diverge (2026-11-08). `complete` is how the model discovers them and valid
   arguments (neurons from context, vocab tokens with their leading spaces, prompt
   history) — the same candidates Tab offers.
 - `snapshot.patches` are edits (`src/edits.h`): `{layer, neuron, op: scale|add|set|steer,
@@ -193,7 +196,7 @@ exactly as it is free of terminal knowledge.
     { "pos":0, "id":128000, "text":"<|begin_of_text|>", "appended":false },
     { "pos":21, "id":374,  "text":" is", "appended":false }
   ],
-  "prompt_len": 22,            // tokens[pos>=prompt_len] were added by :accept
+  "prompt_len": 22,            // tokens[pos>=prompt_len] were added by :accept / :append / :step
   "target": { "id":12366, "text":" Paris", "pinned":false,
               "prob":0.962, "rank":1 },     // at cursor pos
   "patches":[ { "layer":11, "neuron":1639, "scale":0.0 } ],  // 0=ablate -1=invert

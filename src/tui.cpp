@@ -172,6 +172,8 @@ const std::vector<CmdSpec>& commands() {
         {"gen", "[N] [until \"S\"]", "greedy continuation of up to N tokens (default 16, max 8192), baseline vs patched; until: stop once S appears", Arg::Int},
         {"accept", "[patched]", "append the last :gen answer to the prompt so its tokens can be inspected", Arg::Words, {"patched"}},
         {"append", "TEXT", "append TEXT to TOKENS (prefill the model's turn; \\n escapes, special tokens parsed)", Arg::Text},
+        {"step", "[N]", "debugger step: append the next N (default 1) greedy tokens under the patches, cursor onto the last  [n]", Arg::Int},
+        {"rewind", "[POS]", "drop every token after POS (default: the cursor); the next :step branches from there and reports divergence  [R]", Arg::Int},
         {"ablate", "L.N", "zero a neuron's activation at every position (again to remove)  [x]", Arg::Neuron},
         {"invert", "L.N", "multiply a neuron's activation by -1 (again to remove)  [i]", Arg::Neuron},
         {"scale", "L.N K", "multiply a neuron's activation by K", Arg::Neuron},
@@ -391,6 +393,7 @@ void Session::set_prompt(const std::string& text, bool chat, bool think) {
         tokens_ = tok_->encode(full, true, chat);
         prompt_len_ = tokens_.size();
         pos_ = static_cast<int>(tokens_.size()) - 1;
+        forget_branch();
         gen_base_.clear();
         gen_patched_.clear();
         gen_base_ids_.clear();
@@ -550,6 +553,126 @@ void Session::generate(int n, const std::string& stop) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// step / rewind: a debugger's "next" and "reverse" over the generated sequence.
+//
+// The model is causal, so one rerun over TOKENS already holds every position's
+// state; h/l walk it for free. What step adds is *growing* the sequence one
+// decision at a time under the live patches, and what rewind adds is cutting it
+// back so a changed patch set can take a different branch from that point.
+// ---------------------------------------------------------------------------
+
+void Session::step(int n) {
+    if (tokens_.empty()) {
+        status_ = "set a prompt first: :prompt TEXT";
+        return;
+    }
+    try {
+        ensure_engine();
+        iv_.prompt_len = static_cast<int>(prompt_len_);
+        if (!res_ || res_->n_tokens != static_cast<int>(tokens_.size())) rerun();
+        if (!res_) return;
+        const int T0 = static_cast<int>(tokens_.size());
+        std::vector<int32_t> ids;
+        bool ended = false;
+        float p_first = 0;      // patched probability of the first stepped token
+        int base_first = -1;    // what the unpatched model would have picked there
+        // First token: rerun() keeps all logits, so the patched argmax at the last
+        // position is already computed (unless a long sequence's window excludes it).
+        if (const float* lg = res_->logits_at(T0 - 1)) {
+            const auto top = top_probs(lg, res_->n_vocab, 1)[0];
+            if (tok_->is_eog(top.first)) ended = true;
+            else { ids.push_back(top.first); p_first = top.second; }
+            if (base_ && base_->logits_at(T0 - 1)) base_first = top_probs(base_->logits_at(T0 - 1), base_->n_vocab, 1)[0].first;
+        }
+        // The rest (or all of it, if the last row wasn't kept): cached greedy decode,
+        // the same path :gen takes, so step N and gen N agree token for token.
+        if (!ended && static_cast<int>(ids.size()) < n) {
+            auto cache = fw_->new_cache(T0 + n);
+            ForwardResult r = fw_->decode(*cache, tokens_, iv_);
+            if (!ids.empty()) r = fw_->decode(*cache, {ids.back()}, iv_);
+            while (static_cast<int>(ids.size()) < n) {
+                const auto top = top_probs(r.logits.data(), r.n_vocab, 1)[0];
+                if (tok_->is_eog(top.first)) { ended = true; break; }
+                if (ids.empty()) p_first = top.second;
+                ids.push_back(top.first);
+                if (static_cast<int>(ids.size()) < n) r = fw_->decode(*cache, {top.first}, iv_);
+            }
+        }
+        if (ids.empty()) {
+            status_ = "step: the model emits end-of-generation here — nothing to append (:rewind further back, or change the patches)";
+            return;
+        }
+
+        // Compare against the branch the last :rewind dropped, position by position,
+        // up to the first token that differs.
+        std::string branch_note;
+        for (size_t j = 0; j < ids.size() && !branch_.empty() && branch_diverged_ < 0; ++j) {
+            const size_t i = static_cast<size_t>(T0) + j;
+            if (i < branch_at_ || i >= branch_at_ + branch_.size()) break;
+            const int32_t old = branch_[i - branch_at_];
+            if (old != ids[j]) {
+                branch_diverged_ = static_cast<int>(i);
+                branch_note = " · DIVERGED from the old branch at pos " + std::to_string(i) + " (was " + quote_printable(token_text(old), 16) + ")";
+            }
+        }
+        if (branch_note.empty() && !branch_.empty() && branch_diverged_ < 0 &&
+            static_cast<size_t>(T0) + ids.size() <= branch_at_ + branch_.size() && static_cast<size_t>(T0) >= branch_at_)
+            branch_note = " · same as the old branch so far";
+
+        tokens_.insert(tokens_.end(), ids.begin(), ids.end());
+        gen_base_.clear();
+        gen_patched_.clear();
+        gen_base_ids_.clear();
+        gen_patched_ids_.clear();
+        pos_ = static_cast<int>(tokens_.size()) - 1;
+        rerun();
+
+        std::string out;
+        for (int32_t id : ids) out += tok_->piece(id);
+        if (ids.size() == 1) {
+            status_ = "step → pos " + std::to_string(T0) + " " + quote_printable(out, 24) + " (p " + fmt_f(100.0 * p_first, 1).substr(1) + "%)";
+            if (base_first >= 0 && base_first != ids[0]) status_ += " · unpatched would pick " + quote_printable(token_text(base_first), 16);
+        } else {
+            status_ = "stepped " + std::to_string(ids.size()) + " tokens → " + quote_printable(out, 60);
+        }
+        if (ended) status_ += " · then end-of-generation";
+        status_ += branch_note + " — n steps again, h/l walks back, R rewinds";
+    } catch (const std::exception& e) {
+        status_ = std::string("step: ") + e.what();
+    }
+}
+
+void Session::rewind(int keep) {
+    if (tokens_.empty()) {
+        status_ = "set a prompt first: :prompt TEXT";
+        return;
+    }
+    const size_t cut = static_cast<size_t>(keep) + 1;   // keep tokens_[0, cut)
+    if (cut >= tokens_.size()) {
+        status_ = "rewind: nothing after pos " + std::to_string(keep) + " — h to move the cursor back first";
+        return;
+    }
+    // Remember what we drop as the previous branch (positions branch_at_ …).
+    branch_.assign(tokens_.begin() + static_cast<std::ptrdiff_t>(cut), tokens_.end());
+    branch_at_ = cut;
+    branch_diverged_ = -1;
+    std::string dropped;
+    for (int32_t id : branch_) dropped += tok_->piece(id);
+    tokens_.resize(cut);
+    // Cutting into the prompt makes the cut point the new prompt end, so
+    // prompt-scoped edits still stop where the text we fed in stops.
+    if (prompt_len_ > cut) prompt_len_ = cut;
+    gen_base_.clear();
+    gen_patched_.clear();
+    gen_base_ids_.clear();
+    gen_patched_ids_.clear();
+    pos_ = static_cast<int>(cut) - 1;
+    rerun();
+    status_ = "rewound to pos " + std::to_string(pos_) + ": dropped " + std::to_string(branch_.size()) + " tokens " + quote_printable(dropped, 40) +
+              " — change patches, then n / :step to branch from here";
+}
+
 void Session::toggle_patch(int layer, int neuron, float scale) {
     if (busy()) {
         status_ = "busy: dose sweep running — :cancel to stop";
@@ -655,7 +778,7 @@ bool Session::exec(const std::string& line) {
     if (overlay_ == Overlay::Help) overlay_ = Overlay::None;
 
     // While a sweep is running, don't change what it is measuring.
-    static const char* model_cmds[] = {"prompt", "chat", "think", "gen", "accept", "append", "ablate", "invert", "scale", "clear", "target", "pos", "dose", "trace", "steer", "add", "set", "load"};
+    static const char* model_cmds[] = {"prompt", "chat", "think", "gen", "accept", "append", "step", "rewind", "ablate", "invert", "scale", "clear", "target", "pos", "dose", "trace", "steer", "add", "set", "load"};
     if (busy() && std::find(std::begin(model_cmds), std::end(model_cmds), cmd) != std::end(model_cmds)) {
         status_ = trace_running_ && trace_ ? "busy: trace running (" + std::to_string(trace_->done) + "/" + std::to_string(trace_->total) + ") — :cancel to stop"
                   : dose_                  ? "busy: dose sweep running (" + std::to_string(dose_->done) + "/" + std::to_string(dose_->total) + ") — :cancel to stop"
@@ -691,6 +814,7 @@ bool Session::exec(const std::string& line) {
             status_ = "nothing to accept — run :gen N first";
         } else {
             tokens_.insert(tokens_.end(), ids.begin(), ids.end());
+            forget_branch();   // positional branch comparison no longer lines up
             status_ = "appended " + std::to_string(ids.size()) + " tokens (dimmed in TOKENS) — h to move the cursor onto them";
             gen_base_.clear();
             gen_patched_.clear();
@@ -710,6 +834,7 @@ bool Session::exec(const std::string& line) {
         } else {
             const auto ids = tok_->encode(unquote(rest), false, true);
             tokens_.insert(tokens_.end(), ids.begin(), ids.end());
+            forget_branch();
             gen_base_.clear();
             gen_patched_.clear();
             gen_base_ids_.clear();
@@ -718,6 +843,16 @@ bool Session::exec(const std::string& line) {
             rerun();
             status_ = "appended " + std::to_string(ids.size()) + " tokens — the cursor's prediction is what comes next";
         }
+    } else if (cmd == "step") {
+        int k = 1;
+        try { if (rest.find_first_not_of(' ') != std::string::npos) k = std::stoi(rest); } catch (...) { k = 0; }
+        if (k < 1) status_ = "usage: step [N]   (N ≥ 1)";
+        else step(std::min(k, 8192));
+    } else if (cmd == "rewind") {
+        int k = pos_;
+        try { if (rest.find_first_not_of(' ') != std::string::npos) k = std::stoi(rest); } catch (...) { k = -1; }
+        if (k < 0) status_ = "usage: rewind [POS]   (default: the cursor)";
+        else rewind(k);
     } else if (cmd == "ablate" || cmd == "invert") {
         if (!parse_ln(l, n)) status_ = "usage: " + cmd + " L.N";
         else toggle_patch(l, n, cmd == "ablate" ? 0.0f : -1.0f);
@@ -1161,6 +1296,8 @@ bool Session::key(const std::string& k) {
     if (k == "pgdn") { select_layer(layer_ + 1); return true; }
     if (k == "x") { toggle_patch(layer_, neuron_, 0.0f); return true; }
     if (k == "i") { toggle_patch(layer_, neuron_, -1.0f); return true; }
+    if (k == "n") { exec("step"); return true; }
+    if (k == "R") { exec("rewind"); return true; }
     if (k == "w") { toggle_watch(layer_, neuron_); return true; }
     if (k == "D") { start_dose(layer_, neuron_); return true; }
     if (k == "b") { exec("list blame"); return true; }
@@ -1834,6 +1971,12 @@ Element Session::render_state() {
         rows.push_back(text(lens) | dim);
     }
     rows.push_back(separatorLight());
+    if (!branch_.empty()) {
+        std::string old;
+        for (int32_t id : branch_) old += tok_->piece(id);
+        const std::string where = branch_diverged_ >= 0 ? " · diverged at pos " + std::to_string(branch_diverged_) : "";
+        rows.push_back(paragraph("old branch @" + std::to_string(branch_at_) + where + " → " + quote_printable(old, 200)) | dim);
+    }
     if (gen_patched_.empty()) {
         rows.push_back(text(":gen 16 continues from here (baseline vs patched) · :accept appends it") | dim);
     } else if (patches_.empty()) {
@@ -1863,7 +2006,7 @@ Element Session::render_keybar() {
             case Pane::Bytes: keys = {{"j/k", "dim ±1"}, {"J/K", "±32"}, {"g u d", "slice"}}; break;
             case Pane::Patches: keys = {{"j/k", "select"}, {"Del", "remove"}}; break;
         }
-        const K global = {{"h/l", "token"}, {"PgUp/Dn", "layer"}, {"Tab", "pane"}, {"x", "ablate"}, {"i", "invert"},
+        const K global = {{"h/l", "token"}, {"n", "step"}, {"R", "rewind"}, {"PgUp/Dn", "layer"}, {"Tab", "pane"}, {"x", "ablate"}, {"i", "invert"},
                           {"w", "watch"},   {"D", "dose"},        {":", "cmd"},    {"?", "help"},   {"q", "quit"}};
         keys.insert(keys.end(), global.begin(), global.end());
     }
@@ -1924,6 +2067,8 @@ Element Session::render_help() {
     Element keys = vbox({
         sect("the cursor  (pos · layer · neuron, shown in the header)",
              {{"h l", "previous / next token — every pane follows"},
+              {"n", "step: generate one more token (with the patches) and move onto it"},
+              {"R", "rewind: drop the tokens after the cursor; the next n branches from here"},
               {"PgUp PgDn", "previous / next layer"},
               {"Tab S-Tab", "move focus between panes (bright border)"},
               {"j k", "move within the focused pane"}}),

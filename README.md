@@ -2,8 +2,8 @@
 
 A debugger for the neurons inside a language model. Ask why the model gave an
 answer, find the few neurons responsible, change them or rewrite a fact the model
-knows, and save the result as a model file that runs in ordinary llama.cpp. Inspired by 
-![Lyramakesmusic's Neuron Explorer.](https://github.com/lyramakesmusic/neuron-explorer)
+knows, and save the result as a model file that runs in ordinary llama.cpp.
+Inspired by lyramakesmusic's [Neuron Explorer](https://github.com/lyramakesmusic/neuron-explorer).
 
 ![neuronaut's full-screen UI: why Llama 3.2 1B says " Paris"](docs/img/neuronaut.png)
 
@@ -237,6 +237,9 @@ $B $M
 opens the full-screen UI in the screenshot. You move one cursor over words, layers
 and neurons, and every pane follows it. `x` switches the neuron under the cursor
 off, `i` flips it, `D` tests whether its effect is real, and `?` lists the rest.
+Like a debugger, `n` steps the output forward one token (with your edits), `h`/`l`
+walk back and forth, and `R` rewinds to the cursor so a changed edit can take a
+different branch, with the point of divergence reported.
 
 **AI agents.** `neuronaut mcp` is an [MCP](https://modelcontextprotocol.io) server on
 stdin/stdout (no network port), with 17 tools: blame, trace, probe, score, dose,

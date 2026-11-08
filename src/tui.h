@@ -385,6 +385,15 @@ private:
     // generated text contains it (the token that completes it is kept, so :accept
     // includes e.g. the closing </think>).
     void generate(int n, const std::string& stop = {});
+    // Debugger-style stepping. step(n) appends the next n greedy tokens under the
+    // live patches to TOKENS (the first one straight from the current run's logits,
+    // no extra forward), moves the cursor onto the last and re-runs, so every pane
+    // shows the new token's state. rewind(keep) drops every token after position
+    // `keep` (default: the cursor) and remembers them as the previous branch, so the
+    // next steps report whether — and where — the new future diverges from the old.
+    void step(int n);
+    void rewind(int keep);
+    void forget_branch() { branch_.clear(); branch_at_ = 0; branch_diverged_ = -1; }
     // Cursor to the next token (after the cursor, wrapping) whose piece is exactly
     // `piece`, then `offset` further (clamped to the sequence). Returns the matched
     // token's index, or -1 if none matches (cursor unmoved).
@@ -526,6 +535,12 @@ private:
     std::vector<float> target_by_layer_;          // lens logit of the target after each layer at pos_
     std::string gen_base_, gen_patched_;
     std::vector<int32_t> gen_base_ids_, gen_patched_ids_;
+    // The tokens the last :rewind dropped (the previous branch), which started at
+    // index branch_at_ of TOKENS. branch_diverged_ = first index where a :step chose
+    // differently (-1 = no divergence seen yet); comparisons stop there.
+    std::vector<int32_t> branch_;
+    size_t branch_at_ = 0;
+    int branch_diverged_ = -1;
     struct StateLens {
         int pos = -1, layer = -1;
         std::vector<std::pair<int, float>> top;   // (token, prob)

@@ -13,7 +13,12 @@
 #               partial-UTF-8 regression: L29.N366's lens holds a lone byte of a CJK
 #               char, which used to kill the server. Needs Qwen3.5-4B (exit 77).
 #
-# Usage: test_mcp.sh <neuronaut-binary> <model.gguf> <envelope|dose>
+#   step      — debugger stepping: :step 1+1+4 matches :gen 6 token for token,
+#               :rewind 5 + :step 6 replays the same branch, and with the France
+#               suppressor L15.N7279 ablated the new branch diverges at pos 8.
+#               Needs Llama 3.2 1B F16 (exit 77).
+#
+# Usage: test_mcp.sh <neuronaut-binary> <model.gguf> <envelope|dose|think|step>
 set -u
 
 BIN="$1"
@@ -79,6 +84,24 @@ think)
     # The target at the cursor (= the answer's first token) is "Tai" (id 75322), not
     # the "\n\n" a cursor still on </think> would predict.
     grep -F '"id":7,' <<<"$OUT" | grep -qF '"target":{"id":75322,"text":"Tai"' || { echo "FAIL: answer should open with Tai"; exit 1; }
+    ;;
+step)
+    ex() { printf '{"jsonrpc":"2.0","id":%d,"method":"tools/call","params":{"name":"exec","arguments":{"line":"%s"}}}' "$1" "$2"; }
+    OUT=$(drive \
+        '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{}}}' \
+        "$(ex 2 'prompt The capital of France is')" "$(ex 3 'gen 6')" \
+        '{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"state","arguments":{}}}' \
+        "$(ex 4 'step')" "$(ex 5 'step')" "$(ex 6 'step 4')" \
+        "$(ex 7 'rewind 5')" "$(ex 8 'step 6')" \
+        "$(ex 9 'rewind 5')" "$(ex 10 'ablate 15.7279')" "$(ex 11 'step 6')")
+    echo "$OUT" | grep -o '"status":"[^"]*' | cut -c1-200
+    need 'step → pos 6 \" Paris\"'                       # first step from the run's logits
+    need 'stepped 4 tokens → \" The Eiffel\"'             # cached decode for the rest
+    need 'dropped 6 tokens \" Paris. The Eiffel\"'        # rewind remembered the branch
+    need 'same as the old branch so far'                   # same patches → same future
+    need 'DIVERGED from the old branch at pos 8'           # ablation → new branch
+    # :gen 6 (read back from the state tool) and the six stepped tokens agree.
+    grep -F '"id":12,' <<<"$OUT" | grep -qF '"patched":" Paris. The Eiffel"' || { echo "FAIL: gen 6 should match the steps"; exit 1; }
     ;;
 *)
     echo "unknown mode: $MODE"; exit 1;;
